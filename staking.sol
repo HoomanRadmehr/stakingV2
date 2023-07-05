@@ -9,6 +9,16 @@ contract StakingContractFactory is Ownable {
 
     event ContractCreated(address contractAddress);
 
+    struct ContractDetails {
+        address contractAddress;
+        address tokenAddress;
+        uint stakingDuration;
+        uint rewardDuration;
+        uint minDeposit;
+        uint maxDeposit;
+        uint rewardRatio;
+    }
+
     function getContractCount() public view returns(uint contractCount) {
         return contracts.length;
     }
@@ -40,6 +50,23 @@ contract StakingContractFactory is Ownable {
             }
         }
     }
+
+    function getContractDetails() public view onlyOwner returns (ContractDetails[] memory) {
+        ContractDetails[] memory contractDetails = new ContractDetails[](contracts.length);
+        for (uint i = 0; i < contracts.length; i++) {
+            StakingContract sc = StakingContract(contracts[i]);
+            contractDetails[i] = ContractDetails({
+                contractAddress: address(sc),
+                tokenAddress: address(sc.token()),
+                stakingDuration: sc.stakingDuration(),
+                rewardDuration: sc.rewardDuration(),
+                minDeposit: sc.minDeposit(),
+                maxDeposit: sc.maxDeposit(),
+                rewardRatio: sc.rewardRatio()
+            });
+        }
+        return contractDetails;
+    }
 }
 
 contract StakingContract is Ownable {
@@ -51,6 +78,7 @@ contract StakingContract is Ownable {
     uint public maxDeposit;
     uint public rewardRatio;
     mapping(address => uint) public stakes;
+    mapping(address => uint) public stakingStartTimes;
     mapping(address => uint) public rewardIssueTimes;
     mapping(address => uint) public totalRewards;
     mapping(address => bool) public stakers;
@@ -73,6 +101,7 @@ contract StakingContract is Ownable {
     function stake(uint _amount) public {
         require(_amount >= minDeposit && _amount <= maxDeposit, "Invalid deposit amount");
         stakes[msg.sender] += _amount;
+        stakingStartTimes[msg.sender] = block.timestamp;
         rewardIssueTimes[msg.sender] = block.timestamp;
         token.transferFrom(msg.sender, address(this), _amount);
         users.push(msg.sender);
@@ -82,7 +111,8 @@ contract StakingContract is Ownable {
 
     function issueReward() public onlyOwner {
         for(uint i = 0; i < users.length; i++) {
-            if(block.timestamp >= rewardIssueTimes[users[i]] + rewardDuration) {
+            if(block.timestamp >= rewardIssueTimes[users[i]] + rewardDuration 
+               && block.timestamp < stakingStartTimes[users[i]] + stakingDuration) {
                 uint reward = stakes[users[i]] * rewardRatio / 100;
                 totalRewards[users[i]] += reward;
                 token.transfer(users[i], reward);
