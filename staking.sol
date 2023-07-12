@@ -36,6 +36,7 @@ contract StakingContractFactory is Ownable {
         return totalStake;
     }
 
+
     function newStakingContract(address _token, uint _duration, uint _rewardDuration, uint _minDeposit, uint _maxDeposit, uint _rewardRatio) public onlyOwner returns(address newContract) {
         StakingContract c = new StakingContract(_token, msg.sender, _duration, _rewardDuration, _minDeposit, _maxDeposit, _rewardRatio);
         contracts.push(address(c));
