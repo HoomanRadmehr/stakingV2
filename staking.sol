@@ -28,11 +28,27 @@ contract StakingContractFactory is Ownable {
         return contracts.length;
     }
 
+    function getTotalUserStake(address _user) public view returns (uint totalStake) {
+        totalStake = 0;
+        for (uint i = 0; i < contracts.length; i++) {
+            totalStake += StakingContract(contracts[i]).getStake(_user);
+        }
+        return totalStake;
+    }
+
     function newStakingContract(address _token, uint _duration, uint _rewardDuration, uint _minDeposit, uint _maxDeposit, uint _rewardRatio) public onlyOwner returns(address newContract) {
         StakingContract c = new StakingContract(_token, msg.sender, _duration, _rewardDuration, _minDeposit, _maxDeposit, _rewardRatio);
         contracts.push(address(c));
         emit ContractCreated(address(c));
         return address(c);
+    }
+
+    function getTotalUserRewards(address _user) public view returns (uint totalRewards) {
+        totalRewards = 0;
+        for (uint i = 0; i < contracts.length; i++) {
+            totalRewards += StakingContract(contracts[i]).getReward(_user);
+        }
+        return totalRewards;
     }
 
     function setGenealogyContract(address _genealogyContract) public onlyOwner {
@@ -119,6 +135,14 @@ contract StakingContract is Ownable {
         users.push(msg.sender);
         stakers[msg.sender] = true;
         emit Stake(msg.sender, _amount);
+    }
+
+    function getStake(address _user) public view returns (uint) {
+        return stakes[_user];
+    }
+
+    function getReward(address _user) public view returns (uint) {
+        return totalRewards[_user];
     }
 
     function issueReward() public onlyOwner {
