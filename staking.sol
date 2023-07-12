@@ -4,6 +4,11 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
+
+interface IGenealogyContract {
+    function hasChild(address _user) external view returns (bool);
+}
+
 contract StakingContractFactory is Ownable {
     address[] public contracts;
 
@@ -28,6 +33,12 @@ contract StakingContractFactory is Ownable {
         contracts.push(address(c));
         emit ContractCreated(address(c));
         return address(c);
+    }
+
+    function setGenealogyContract(address _genealogyContract) public onlyOwner {
+        for (uint i = 0; i < contracts.length; i++) {
+            StakingContract(contracts[i]).setGenealogyContract(_genealogyContract);
+        }
     }
 
     function getUserDetails(address _user) public view returns (uint totalStake, uint totalRewards) {
@@ -71,7 +82,8 @@ contract StakingContractFactory is Ownable {
 
 contract StakingContract is Ownable {
     IERC20 public token;
-    address public owner;
+    address public creator;
+    address public genealogyContractAddress;
     uint public stakingDuration;
     uint public rewardDuration;
     uint public minDeposit;
@@ -90,7 +102,7 @@ contract StakingContract is Ownable {
 
     constructor(address _token, address _owner, uint _duration, uint _rewardDuration, uint _minDeposit, uint _maxDeposit, uint _rewardRatio) {
         token = IERC20(_token);
-        owner = _owner;
+        creator = _owner;
         stakingDuration = _duration;
         rewardDuration = _rewardDuration;
         minDeposit = _minDeposit;
@@ -122,8 +134,15 @@ contract StakingContract is Ownable {
         }
     }
 
+    function setGenealogyContract(address _genealogyContract) public onlyOwner {
+        genealogyContractAddress = _genealogyContract;
+    }
+
     function cancelStake() public {
         require(stakes[msg.sender] > 0, "No stake to withdraw");
+        require(block.timestamp > stakingStartTimes[msg.sender] + 90 days, "Cannot cancel staking before 3 months");
+        IGenealogyContract genealogyContract = IGenealogyContract(genealogyContractAddress);
+        require(!genealogyContract.hasChild(msg.sender), "User with children cannot cancel staking");
         uint refund = stakes[msg.sender] > totalRewards[msg.sender] ? stakes[msg.sender] - totalRewards[msg.sender] : 0;
         stakes[msg.sender] = 0;
         totalRewards[msg.sender] = 0;
