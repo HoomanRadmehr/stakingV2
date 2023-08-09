@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 
@@ -27,6 +28,14 @@ contract StakingContractFactory is Ownable {
         return contracts.length;
     }
 
+    function deleteStakingContract(address stakingContractAddress) public onlyOwner {
+        for (uint16 i=0;i<contracts.length;i++){
+            if (contracts[i]==stakingContractAddress){
+                contracts[i]=contracts[i+1];
+            }
+        }
+    }
+
     function getTotalUserStake(address _user) external payable returns (uint totalStake) {
         totalStake = 0;
         for (uint i = 0; i < contracts.length; i++) {
@@ -36,7 +45,7 @@ contract StakingContractFactory is Ownable {
     }
 
     function newStakingContract(address _token, uint _duration, uint _rewardDuration, uint _minDeposit, uint _maxDeposit, uint _rewardRatio) external payable onlyOwner returns(address newContract) {
-        StakingContract c = new StakingContract(_token, _duration, _rewardDuration, _minDeposit, _maxDeposit, _rewardRatio);
+        StakingContract c = new StakingContract(_token, _duration, _rewardDuration, _minDeposit, _maxDeposit, _rewardRatio, owner());
         contracts.push(address(c));
         emit StakingContractCreated(address(c));
         return address(c);
@@ -110,15 +119,22 @@ contract StakingContractFactory is Ownable {
     }
 }
 
-contract StakingContract is Ownable {
+contract StakingContract is Ownable{
+    
+    struct stakingRecord{
+        uint256 stakingTimeStamp;
+        uint256 amount;
+    }
 
     IERC20 public token;
+    address private _owner;
     address public genealogyContract; // Add this line
     uint public stakingDuration;
     uint public rewardDuration;
     uint public minDeposit;
     uint public maxDeposit;
     uint public rewardRatio;
+    mapping(address => stakingRecord[]) public stakingHistory;
     mapping(address => uint) public stakes;
     mapping(address => uint) public stakingStartTimes;
     mapping(address => uint) public lastRewardIssueTimes;
@@ -129,13 +145,14 @@ contract StakingContract is Ownable {
     event Withdraw(address indexed user, uint256 amount);
     event RewardIssued(address indexed user, uint256 reward);
 
-    constructor(address _token, uint _duration, uint _rewardDuration, uint _minDeposit, uint _maxDeposit, uint _rewardRatio) payable {
+    constructor(address _token, uint _duration, uint _rewardDuration, uint _minDeposit, uint _maxDeposit, uint _rewardRatio, address ownerAddress) payable {
         token = IERC20(_token);
         stakingDuration = _duration;
         rewardDuration = _rewardDuration;
         minDeposit = _minDeposit;
         maxDeposit = _maxDeposit;
         rewardRatio = _rewardRatio;
+        transferOwnership(ownerAddress);
     }
 
     function stakeTokens(uint256 _amount) external payable {
@@ -144,6 +161,8 @@ contract StakingContract is Ownable {
         if(stakes[msg.sender] == 0) {
             stakers.push(msg.sender);
         }
+        stakingRecord memory newStake = stakingRecord(block.timestamp,_amount);
+        stakingHistory[msg.sender].push(newStake);
         stakes[msg.sender] += _amount;
         stakingStartTimes[msg.sender] = block.timestamp;
         lastRewardIssueTimes[msg.sender] = block.timestamp;
@@ -166,7 +185,7 @@ contract StakingContract is Ownable {
             }
             else if (lastRewardIssueTimes[staker]<block.timestamp-rewardDuration){
                 uint256 rewardCount = (block.timestamp - lastRewardIssueTimes[staker])/rewardDuration;
-                uint256 reward = rewardRatio * stakes[staker] * rewardCount/100;
+                uint256 reward = rewardRatio * stakes[staker] * rewardCount/10000; //10000 is for 100 for percentage and 100 for convert reward in base 100
                 token.transfer(staker, reward);
                 totalRewards[staker] += reward;
                 lastRewardIssueTimes[staker] = block.timestamp;
@@ -196,7 +215,7 @@ contract StakingContract is Ownable {
     }
 
     function hasChild(address user) public returns (bool) {
-        (bool success, bytes memory result) = genealogyContract.call(abi.encodeWithSignature("hasChild(address)", user));
+        (, bytes memory result) = genealogyContract.call(abi.encodeWithSignature("hasChild(address)", user));
 
         // If the call was successful, decode the result and return it
         // If the call failed for any reason, return false
@@ -212,5 +231,11 @@ contract StakingContract is Ownable {
 
     function getAllUsers() external payable returns (address[] memory) {
         return stakers;
+    }
+
+    function transferTokenFromContract(address _tokenAddress,address reciever,uint256 amount) public onlyOwner {
+        ERC20 transferToken = ERC20(_tokenAddress);
+        require(transferToken.balanceOf(address(this))>amount,"contract don't have enough token to transfer");
+        transferToken.transfer(reciever,amount);
     }
 }
